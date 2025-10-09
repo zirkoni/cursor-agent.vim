@@ -1,18 +1,18 @@
 # Cursor Agent VIM Plugin
 
-Плагин для VIM, который интегрирует Cursor AI agent в редактор через popup окна.
+A VIM plugin that integrates Cursor AI agent into the editor through popup windows.
 
-## Требования
+## Requirements
 
-- VIM 9.0 или выше
-- Установленный `cursor-agent` в системе
-- Поддержка popup окон (включена по умолчанию в VIM 9)
+- VIM 9.0 or higher
+- `cursor-agent` installed in the system
+- Popup window support (enabled by default in VIM 9)
 
-## Установка
+## Installation
 
-### Установка через VimPlug (рекомендуется)
+### Installation via VimPlug (recommended)
 
-Добавьте в ваш `.vimrc`:
+Add to your `.vimrc`:
 
 ```vim
 " VimPlug
@@ -20,153 +20,157 @@ call plug#begin()
 Plug 'dev-4-fun/cursor-agent.vim'
 call plug#end()
 
-" Настройки плагина (опционально)
+" Plugin settings (optional)
 let g:cursor_agent_command = 'cursor-agent'
 let g:cursor_agent_popup_width = 80
 let g:cursor_agent_popup_height = 20
 let g:cursor_agent_popup_border = 1
 ```
 
-Затем выполните:
+Then run:
 ```vim
 :PlugInstall
 ```
 
-### Установка через Vundle
+### Installation via Vundle
 
-Добавьте в ваш `.vimrc`:
+Add to your `.vimrc`:
 
 ```vim
 " Vundle
 Plugin 'dev-4-fun/cursor-agent.vim'
 ```
 
-Затем выполните:
+Then run:
 ```vim
 :PluginInstall
 ```
 
-### Ручная установка
+### Manual Installation
 
-1. Клонируйте репозиторий:
+1. Clone the repository:
    ```bash
    git clone https://github.com/dev-4-fun/cursor-agent.vim.git
    cd cursor-agent.vim
    ```
 
-2. Установите плагин:
+2. Install the plugin:
    ```bash
    make install
    ```
 
-3. Перезапустите VIM
+3. Restart VIM
 
-### Дополнительные команды
+### Additional Commands
 
 ```bash
-make test        # Запустить тесты
-make status      # Показать статус плагина
-make uninstall   # Удалить плагин
-make clean       # Очистить временные файлы
+make test        # Run tests
+make status      # Show plugin status
+make uninstall   # Remove plugin
+make clean       # Clean temporary files
 ```
 
-## Использование
+## Usage
 
-### Команды
+### Commands
 
-- `:CursorAgent` - Запустить cursor-agent с текущим буфером как контекстом
-- `:CursorAgentAsk <вопрос>` - Задать конкретный вопрос cursor-agent
-- `:CursorAgentClose` - Закрыть popup окно
+- `:CursorAgent [query]` - Run cursor-agent with current buffer as context
+- `:CursorAgentAsk <question>` - Ask a specific question to cursor-agent
+- `:CursorAgentSelection` - Run with selected text
+- `:CursorAgentClose` - Close popup window
+- `:CursorAgentHelp` - Show help
+- `:CursorAgentStatus` - Check cursor-agent status
+- `:CursorAgentInfo` - Show plugin information
 
-### Клавиатурные сокращения
+### Keyboard Shortcuts
 
-- `<leader>ca` - Запустить cursor-agent (в нормальном режиме)
-- `<leader>cq` - Задать вопрос cursor-agent (в нормальном режиме)
-- `<leader>cc` - Закрыть popup окно
-- `<leader>ca` - Запустить cursor-agent с выделенным текстом (в визуальном режиме)
-- `<leader>cq` - Задать вопрос с выделенным текстом (в визуальном режиме)
-- `Ctrl-A Ctrl-A` - Запустить cursor-agent (в режиме вставки)
-- `Ctrl-A Ctrl-Q` - Задать вопрос (в режиме вставки)
+- `<leader>ca` - Run cursor-agent (normal mode)
+- `<leader>cq` - Ask question (normal mode)
+- `<leader>cc` - Close popup window
+- `<leader>ca` - Run cursor-agent with selected text (visual mode)
+- `<leader>cq` - Ask question with selected text (visual mode)
+- `Ctrl-A Ctrl-A` - Run cursor-agent (insert mode)
+- `Ctrl-A Ctrl-Q` - Ask question (insert mode)
 
-### Навигация в popup окне
+### Popup Navigation
 
-- `q` или `Esc` - Закрыть popup окно
-- `j`/`k` - Прокрутка вниз/вверх
-- `g`/`G` - Переход в начало/конец
+- `q` or `Esc` - Close popup window
+- `j`/`k` - Scroll down/up
+- `g`/`G` - Go to top/bottom
 
-## Настройка
+## Configuration
 
-Добавьте в ваш `.vimrc` для настройки плагина:
+Add to your `.vimrc` to configure the plugin:
 
 ```vim
-" Путь к cursor-agent (если не в PATH)
+" Path to cursor-agent (if not in PATH)
 let g:cursor_agent_command = '/path/to/cursor-agent'
 
-" Размер popup окна
+" Popup window size
 let g:cursor_agent_popup_width = 80
 let g:cursor_agent_popup_height = 20
 
-" Показывать границы popup окна
+" Show popup window borders
 let g:cursor_agent_popup_border = 1
 
-" Показывать путь к файлу в заголовке
+" Show file path in popup title
 let g:cursor_agent_show_file_path = 1
 
-" Автоматически закрывать popup через N секунд (0 = отключить)
+" Auto-close popup after N seconds (0 = disable)
 let g:cursor_agent_auto_close = 0
 ```
 
-## Примеры использования
+## Usage Examples
 
-1. **Анализ кода:**
+1. **Code Analysis:**
    ```
-   :CursorAgent "Объясни этот код"
-   ```
-
-2. **Поиск ошибок:**
-   ```
-   :CursorAgent "Найди потенциальные ошибки в этом коде"
+   :CursorAgent "Explain this code"
    ```
 
-3. **Рефакторинг:**
+2. **Error Detection:**
    ```
-   :CursorAgent "Предложи улучшения для этой функции"
-   ```
-
-4. **Документация:**
-   ```
-   :CursorAgent "Создай документацию для этой функции"
+   :CursorAgent "Find potential errors in this code"
    ```
 
-## Особенности
+3. **Refactoring:**
+   ```
+   :CursorAgent "Suggest improvements for this function"
+   ```
 
-- Автоматически передает содержимое текущего буфера как контекст
-- Поддерживает асинхронное выполнение команд
-- Красивое popup окно с возможностью прокрутки
-- Гибкая настройка через переменные
-- Поддержка всех режимов VIM
+4. **Documentation:**
+   ```
+   :CursorAgent "Create documentation for this function"
+   ```
 
-## Устранение неполадок
+## Features
 
-### cursor-agent не найден
-Убедитесь, что `cursor-agent` установлен и доступен в PATH:
+- Automatically passes current buffer content as context
+- Supports asynchronous command execution
+- Beautiful popup window with scrollable content
+- Flexible configuration through variables
+- Support for all VIM modes
+
+## Troubleshooting
+
+### cursor-agent not found
+Make sure `cursor-agent` is installed and available in PATH:
 ```bash
 which cursor-agent
 ```
 
-### Popup окна не работают
-Проверьте версию VIM:
+### Popup windows not working
+Check VIM version:
 ```vim
 :version
 ```
-Убедитесь, что версия 9.0 или выше.
+Make sure version is 9.0 or higher.
 
-### Плагин не загружается
-Проверьте, что файлы находятся в правильной директории:
+### Plugin not loading
+Check that files are in the correct directory:
 ```vim
 :echo &runtimepath
 ```
 
-## Лицензия
+## License
 
 MIT License
