@@ -35,8 +35,8 @@ function! TestCommands()
         return 0
     endif
     
-    if !exists(':CursorAgentAsk')
-        echo "ERROR: :CursorAgentAsk command not found"
+    if !exists(':CursorAgentInteractive')
+        echo "ERROR: :CursorAgentInteractive command not found"
         return 0
     endif
     

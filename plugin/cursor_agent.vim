@@ -16,9 +16,8 @@ let g:cursor_agent_popup_border = get(g:, 'cursor_agent_popup_border', 1)
 
 " Commands
 command! -nargs=* CursorAgent call cursor_agent#run(<q-args>)
-command! -nargs=1 CursorAgentAsk call cursor_agent#ask(<q-args>)
+command! -nargs=* CursorAgentInteractive call cursor_agent#run_interactive(<q-args>)
 command! -nargs=* CursorAgentSelection call cursor_agent#run_with_selection(<q-args>)
-command! CursorAgentInteractive call cursor_agent#show_interactive_popup('Interactive mode - press q to ask a question, Esc to close')
 command! CursorAgentClose call cursor_agent#close()
 command! CursorAgentHelp call cursor_agent#help()
 command! CursorAgentStatus call cursor_agent#status()
@@ -27,9 +26,6 @@ command! CursorAgentInfo call cursor_agent#info()
 " Key mappings
 if !hasmapto('<Plug>CursorAgentRun')
     nmap <silent> <leader>ca <Plug>CursorAgentRun
-endif
-if !hasmapto('<Plug>CursorAgentAsk')
-    nmap <silent> <leader>cq <Plug>CursorAgentAsk
 endif
 if !hasmapto('<Plug>CursorAgentInteractive')
     nmap <silent> <leader>ci <Plug>CursorAgentInteractive
@@ -40,14 +36,13 @@ endif
 
 " Define the actual mappings
 nnoremap <silent> <Plug>CursorAgentRun :CursorAgent<CR>
-nnoremap <silent> <Plug>CursorAgentAsk :CursorAgentAsk 
 nnoremap <silent> <Plug>CursorAgentInteractive :CursorAgentInteractive<CR>
 nnoremap <silent> <Plug>CursorAgentClose :CursorAgentClose<CR>
 
 " Visual mode mappings
 vnoremap <silent> <leader>ca :<C-U>CursorAgentSelection<CR>
-vnoremap <silent> <leader>cq :<C-U>CursorAgentSelection<CR>
+vnoremap <silent> <leader>ci :<C-U>CursorAgentSelection<CR>
 
 " Insert mode mappings
 inoremap <silent> <C-A><C-A> <Esc>:CursorAgent<CR>
-inoremap <silent> <C-A><C-Q> <Esc>:CursorAgentAsk 
+inoremap <silent> <C-A><C-I> <Esc>:CursorAgentInteractive<CR>
