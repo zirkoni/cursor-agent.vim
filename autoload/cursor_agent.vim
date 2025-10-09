@@ -66,8 +66,8 @@ function! cursor_agent#show_popup(content)
     " Check if popup is supported and all required functions exist
     if has('popupwin') && exists('*popup_create') && exists('*popup_close') && exists('*popup_settext')
         try
-            " Create popup window with working options
-            let s:popup_winid = popup_create(content_list, #{pos: 'center', title: 'Cursor Agent', wrap: 1, moved: 'any', filter: function('s:popup_filter')})
+        " Create popup window with working options
+        let s:popup_winid = popup_create(content_list, #{pos: 'center', title: 'Cursor Agent', wrap: 1, moved: 'any', border: 1, filter: function('s:popup_filter')})
         catch
             " Fallback to echo if popup fails
             echo join(content_list, "\n")
