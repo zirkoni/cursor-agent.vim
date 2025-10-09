@@ -10,12 +10,48 @@
 
 ## Установка
 
-### Автоматическая установка (рекомендуется)
+### Установка через VimPlug (рекомендуется)
+
+Добавьте в ваш `.vimrc`:
+
+```vim
+" VimPlug
+call plug#begin()
+Plug 'dev-4-fun/cursor-agent.vim'
+call plug#end()
+
+" Настройки плагина (опционально)
+let g:cursor_agent_command = 'cursor-agent'
+let g:cursor_agent_popup_width = 80
+let g:cursor_agent_popup_height = 20
+let g:cursor_agent_popup_border = 1
+```
+
+Затем выполните:
+```vim
+:PlugInstall
+```
+
+### Установка через Vundle
+
+Добавьте в ваш `.vimrc`:
+
+```vim
+" Vundle
+Plugin 'dev-4-fun/cursor-agent.vim'
+```
+
+Затем выполните:
+```vim
+:PluginInstall
+```
+
+### Ручная установка
 
 1. Клонируйте репозиторий:
    ```bash
-   git clone <repository-url>
-   cd cursor-agent-vim-plugin
+   git clone https://github.com/dev-4-fun/cursor-agent.vim.git
+   cd cursor-agent.vim
    ```
 
 2. Установите плагин:
@@ -24,15 +60,6 @@
    ```
 
 3. Перезапустите VIM
-
-### Ручная установка
-
-1. Скопируйте содержимое плагина в директорию плагинов VIM:
-   ```bash
-   cp -r . ~/.vim/pack/plugins/start/cursor-agent-vim-plugin/
-   ```
-
-2. Перезапустите VIM
 
 ### Дополнительные команды
 
