@@ -1,12 +1,6 @@
 " Cursor Agent VIM Plugin - Autoload functions
 " This file is loaded on demand when functions are called
 
-" Check if plugin is loaded
-if exists('g:loaded_cursor_agent')
-    finish
-endif
-let g:loaded_cursor_agent = 1
-
 " Load settings first
 if !exists('g:cursor_agent_command')
     let g:cursor_agent_command = 'cursor-agent'
@@ -50,12 +44,7 @@ function! cursor_agent#run(query = '')
     endif
     
     " Prepare context for cursor-agent
-    let context = {
-        \ 'file_path': file_path,
-        \ 'file_name': file_name,
-        \ 'content': buffer_content,
-        \ 'query': a:query
-        \ }
+    let context = #{file_path: file_path, file_name: file_name, content: buffer_content, query: a:query}
     
     " Show popup with loading message
     call cursor_agent#show_popup("Loading...")
@@ -71,23 +60,24 @@ function! cursor_agent#show_popup(content)
         call popup_close(s:popup_winid)
     endif
     
-    " Create popup window
-    let s:popup_winid = popup_create(a:content, {
-        \ 'pos': 'center',
-        \ 'line': 'cursor+1',
-        \ 'col': 'cursor',
-        \ 'minwidth': g:cursor_agent_popup_width,
-        \ 'minheight': g:cursor_agent_popup_height,
-        \ 'maxwidth': g:cursor_agent_popup_width,
-        \ 'maxheight': g:cursor_agent_popup_height,
-        \ 'border': g:cursor_agent_popup_border,
-        \ 'borderchars': ['─', '│', '─', '│', '┌', '┐', '┘', '└'],
-        \ 'title': 'Cursor Agent',
-        \ 'wrap': 1,
-        \ 'scrollbar': 1,
-        \ 'moved': 'any',
-        \ 'filter': function('s:popup_filter')
-        \ })
+    " Convert content to list if it's a string
+    let content_list = type(a:content) == v:t_string ? split(a:content, '\n') : a:content
+    
+    " Check if popup is supported
+    if has('popupwin')
+        try
+            " Create popup window with simplified options
+            let s:popup_winid = popup_create(content_list, #{pos: 'center', line: 'cursor+1', col: 'cursor', minwidth: g:cursor_agent_popup_width, minheight: g:cursor_agent_popup_height, maxwidth: g:cursor_agent_popup_width, maxheight: g:cursor_agent_popup_height, border: g:cursor_agent_popup_border, title: 'Cursor Agent', wrap: 1, moved: 'any', filter: function('s:popup_filter')})
+        catch
+            " Fallback to echo if popup fails
+            echo join(content_list, "\n")
+            let s:popup_winid = -1
+        endtry
+    else
+        " Fallback to echo if popup is not supported
+        echo join(content_list, "\n")
+        let s:popup_winid = -1
+    endif
 endfunction
 
 " Popup filter function for key handling
@@ -109,23 +99,18 @@ function! s:run_cursor_agent(context)
     
     call writefile(split(context_text, "\n"), temp_file)
     
-    " Prepare command
-    let cmd = g:cursor_agent_command . ' "' . a:context.query . '" < ' . temp_file
+    " Prepare command with @-syntax for file context
+    let cmd = g:cursor_agent_command . ' --print "' . a:context.query . ' @' . a:context.file_path . '"'
     
-    " Run command asynchronously
-    if has('job')
-        let job = job_start(cmd, {
-            \ 'out_cb': function('s:on_output'),
-            \ 'err_cb': function('s:on_error'),
-            \ 'close_cb': function('s:on_close'),
-            \ 'out_mode': 'raw'
-            \ })
+    " Run command synchronously
+    echo "Running cursor-agent..."
+    let output = system(cmd)
+    if v:shell_error == 0
+        call cursor_agent#show_popup(output)
     else
-        " Fallback for older VIM versions
-        let output = system(cmd)
-        call s:on_output('', output)
-        call s:on_close('')
+        call cursor_agent#show_popup("Error running cursor-agent: " . output)
     endif
+    let s:is_running = 0
     
     " Clean up temp file
     call delete(temp_file)
@@ -134,18 +119,34 @@ endfunction
 " Callback for command output
 function! s:on_output(channel, data)
     if s:popup_winid != -1
-        let current_content = popup_gettext(s:popup_winid)
-        let new_content = current_content . a:data
-        call popup_settext(s:popup_winid, new_content)
+        try
+            let current_content = popup_gettext(s:popup_winid)
+            let new_content = current_content . a:data
+            call popup_settext(s:popup_winid, new_content)
+        catch
+            " Fallback to echo if popup operations fail
+            echo a:data
+        endtry
+    else
+        " Echo output if no popup
+        echo a:data
     endif
 endfunction
 
 " Callback for command errors
 function! s:on_error(channel, data)
     if s:popup_winid != -1
-        let current_content = popup_gettext(s:popup_winid)
-        let new_content = current_content . "\nError: " . a:data
-        call popup_settext(s:popup_winid, new_content)
+        try
+            let current_content = popup_gettext(s:popup_winid)
+            let new_content = current_content . "\nError: " . a:data
+            call popup_settext(s:popup_winid, new_content)
+        catch
+            " Fallback to echo if popup operations fail
+            echo "Error: " . a:data
+        endtry
+    else
+        " Echo error if no popup
+        echo "Error: " . a:data
     endif
 endfunction
 
@@ -194,13 +195,7 @@ function! cursor_agent#run_with_selection(query = '')
     endif
     
     " Prepare context for cursor-agent
-    let context = {
-        \ 'file_path': expand('%:p'),
-        \ 'file_name': expand('%:t'),
-        \ 'content': selected_text,
-        \ 'query': a:query,
-        \ 'selection': 1
-        \ }
+    let context = #{file_path: expand('%:p'), file_name: expand('%:t'), content: selected_text, query: a:query, selection: 1}
     
     " Show popup with loading message
     call cursor_agent#show_popup("Analyzing selected text...")
