@@ -74,9 +74,11 @@ make clean       # Clean temporary files
 
 ### Commands
 
-- `:CursorAgent [query]` - Run cursor-agent with current buffer as context
+- `:CursorAgent [query]` - Run cursor-agent with current buffer as context (streaming)
 - `:CursorAgentAsk <question>` - Ask a specific question to cursor-agent
 - `:CursorAgentSelection` - Run with selected text
+- `:CursorAgentTerm` - Open terminal in popup window (shares same chat session)
+- `:CursorAgentNewChat` - Start a new chat session
 - `:CursorAgentClose` - Close popup window
 - `:CursorAgentHelp` - Show help
 - `:CursorAgentStatus` - Check cursor-agent status
@@ -113,6 +115,9 @@ let g:cursor_agent_popup_height = 20
 " Show popup window borders
 let g:cursor_agent_popup_border = 1
 
+" Enable debug logging to vim_stream_debug.log (0 = off, 1 = on)
+let g:cursor_agent_debug = 0
+
 " Show file path in popup title
 let g:cursor_agent_show_file_path = 1
 
@@ -122,10 +127,11 @@ let g:cursor_agent_auto_close = 0
 
 ## Usage Examples
 
-1. **Code Analysis:**
+1. **Code Analysis (with streaming):**
    ```
    :CursorAgent "Explain this code"
    ```
+   Response appears in real-time as AI generates it.
 
 2. **Error Detection:**
    ```
@@ -142,11 +148,18 @@ let g:cursor_agent_auto_close = 0
    :CursorAgent "Create documentation for this function"
    ```
 
+5. **Session Management:**
+   - First query creates a new chat session
+   - Subsequent queries in the same Vim session continue the conversation
+   - Use `:CursorAgentNewChat` to start fresh
+   - `:CursorAgentTerm` shares the same session for interactive follow-up
+
 ## Features
 
 - Automatically passes current buffer content as context
-- Supports asynchronous command execution
-- Beautiful popup window with scrollable content
+- **Real-time streaming responses** - see AI responses as they are generated
+- **Session management** - maintains conversation history across queries
+- Terminal in popup window for interactive shell access
 - Flexible configuration through variables
 - Support for all VIM modes
 

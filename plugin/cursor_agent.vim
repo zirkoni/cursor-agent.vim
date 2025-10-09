@@ -13,6 +13,7 @@ let g:cursor_agent_command = get(g:, 'cursor_agent_command', 'cursor-agent')
 let g:cursor_agent_popup_width = get(g:, 'cursor_agent_popup_width', 80)
 let g:cursor_agent_popup_height = get(g:, 'cursor_agent_popup_height', 20)
 let g:cursor_agent_popup_border = get(g:, 'cursor_agent_popup_border', 1)
+let g:cursor_agent_debug = get(g:, 'cursor_agent_debug', 0)
 
 " Commands
 command! -nargs=* CursorAgent call cursor_agent#run_interactive(<q-args>)
@@ -21,6 +22,8 @@ command! CursorAgentClose call cursor_agent#close()
 command! CursorAgentHelp call cursor_agent#help()
 command! CursorAgentStatus call cursor_agent#status()
 command! CursorAgentInfo call cursor_agent#info()
+command! CursorAgentTerm call cursor_agent#terminal()
+command! CursorAgentNewChat call cursor_agent#new_chat()
 
 " Key mappings
 if !hasmapto('<Plug>CursorAgentRun')

@@ -18,12 +18,23 @@ if !exists('g:cursor_agent_popup_border')
     let g:cursor_agent_popup_border = 1
 endif
 
+if !exists('g:cursor_agent_debug')
+    let g:cursor_agent_debug = 0
+endif
+
 " Global variables
 let s:popup_winid = -1
+let s:terminal_winid = -1
+let s:terminal_bufnr = -1
 let s:is_running = 0
+let s:stream_output = ''
+let s:job = v:null
+let s:read_timer = -1
+let s:raw_buffer = ''
 
 " Main function to run cursor-agent with current buffer context
-function! cursor_agent#run(query = '')
+function! cursor_agent#run(...)
+    let query = a:0 > 0 ? a:1 : ''
     if s:is_running
         echo "Cursor Agent is already running..."
         return
@@ -44,25 +55,21 @@ function! cursor_agent#run(query = '')
     endif
     
     " Prepare context for cursor-agent
-    let context = #{file_path: file_path, file_name: file_name, content: buffer_content, query: a:query}
+    let context = #{file_path: file_path, file_name: file_name, content: buffer_content, query: query}
     
-    " Show popup with loading message
-    call cursor_agent#show_popup("Loading...")
-    
-    " Run cursor-agent asynchronously
+    " Run cursor-agent asynchronously (popup will be created there)
     call s:run_cursor_agent(context)
 endfunction
 
 " Interactive function to run cursor-agent
-function! cursor_agent#run_interactive(query = '')
+function! cursor_agent#run_interactive(...)
+    let query = a:0 > 0 ? a:1 : ''
     " If no query provided, ask for one
-    if a:query == ''
+    if query == ''
         let query = input('What would you like to ask about this file? ')
         if query == ''
             return
         endif
-    else
-        let query = a:query
     endif
     
     " Call the main run function
@@ -182,36 +189,186 @@ function! s:terminal_popup_filter(winid, key)
     return 0
 endfunction
 
-" Function to run cursor-agent
+" Function to run cursor-agent with streaming
 function! s:run_cursor_agent(context)
     " Close existing popup if open
     if s:popup_winid != -1
         call popup_close(s:popup_winid)
     endif
     
-    " Prepare command with @-syntax for file context
-    let cmd = g:cursor_agent_command . ' --print "' . a:context.query . ' @' . a:context.file_path . '"'
+    " Get or create chat session
+    let chat_id_file = '/tmp/cursor_agent_chat_id_' . getpid()
+    let chat_id = ''
     
-    " Show loading popup with progress
-    call s:show_loading_popup()
-    
-    " Run command synchronously for now (async doesn't work in non-interactive mode)
-    echo "Running cursor-agent..."
-    let output = system(cmd)
-    if v:shell_error == 0
-        " Close loading popup and show result
-        if s:popup_winid != -1
-            call popup_close(s:popup_winid)
-        endif
-        call cursor_agent#show_interactive_popup(output)
+    if filereadable(chat_id_file)
+        " Use existing chat session
+        let chat_id = readfile(chat_id_file)[0]
     else
-        " Close loading popup and show error
-        if s:popup_winid != -1
-            call popup_close(s:popup_winid)
+        " Create new chat session
+        let create_cmd = g:cursor_agent_command . ' create-chat'
+        let chat_id = system(create_cmd)
+        let chat_id = substitute(chat_id, '\n', '', 'g')
+        call writefile([chat_id], chat_id_file)
+    endif
+    
+    " Prepare streaming command with session
+    " Use script to emulate TTY for cursor-agent (required for streaming)
+    let cmd = 'script -q /dev/null ' . g:cursor_agent_command . ' --resume ' . chat_id . ' -p --output-format stream-json --stream-partial-output "' . a:context.query . '"'
+    
+    " Initialize streaming output
+    let s:stream_output = ''
+    
+    " Create popup immediately for streaming
+    let s:popup_winid = popup_create(['🤖 Thinking...'], #{
+        \ pos: 'center',
+        \ title: 'Cursor Agent - Streaming',
+        \ wrap: 1,
+        \ moved: 'any',
+        \ border: [],
+        \ filter: function('s:interactive_popup_filter')
+        \ })
+    
+    " Force redraw to show popup immediately
+    redraw
+    
+    " Debug logging (only if g:cursor_agent_debug is enabled)
+    if g:cursor_agent_debug
+        call writefile(['STARTING JOB: ' . cmd], 'vim_stream_debug.log', 'a')
+    endif
+    
+    " Run command asynchronously with streaming
+    " Use callbacks with raw mode
+    let s:job = job_start(['/bin/sh', '-c', cmd], #{
+        \ out_cb: function('s:on_stream_output'),
+        \ err_cb: function('s:on_stream_error'),
+        \ exit_cb: function('s:on_stream_close'),
+        \ out_mode: 'raw',
+        \ err_mode: 'raw'
+        \ })
+    
+    " Debug: check if job started
+    if job_status(s:job) == 'fail'
+        if g:cursor_agent_debug
+            call writefile(['JOB FAILED TO START'], 'vim_stream_debug.log', 'a')
         endif
-        call cursor_agent#show_interactive_popup("Error running cursor-agent: " . output)
+        call popup_close(s:popup_winid)
+        echom 'Job failed to start!'
+        let s:is_running = 0
+    else
+        if g:cursor_agent_debug
+            call writefile(['JOB STARTED WITH CALLBACKS: ' . job_status(s:job)], 'vim_stream_debug.log', 'a')
+        endif
+        echom 'Job started: ' . job_status(s:job)
+    endif
+endfunction
+
+" Read stream output via timer (not used, kept for reference)
+function! s:read_stream_output(timer)
+    " This function is not currently used - callbacks work better
+    " Kept for reference in case timer-based approach is needed
+    call timer_stop(a:timer)
+endfunction
+
+" Callback for streaming output (now used with raw mode)
+function! s:on_stream_output(channel, msg)
+    " Debug logging
+    if g:cursor_agent_debug
+        call writefile(['CALLBACK CALLED: len=' . len(a:msg)], 'vim_stream_debug.log', 'a')
+    endif
+    
+    " Accumulate raw data
+    if !exists('s:raw_buffer')
+        let s:raw_buffer = ''
+    endif
+    let s:raw_buffer .= a:msg
+    
+    " Split by newlines and process complete lines
+    let lines = split(s:raw_buffer, "\n", 1)
+    
+    " If last element is not empty, it's incomplete - save it for next callback
+    if len(lines) > 0 && lines[-1] != ''
+        let s:raw_buffer = lines[-1]
+        let lines = lines[:-2]
+    else
+        let s:raw_buffer = ''
+    endif
+    
+    " Process each complete line
+    for line in lines
+        if line == ''
+            continue
+        endif
+        
+        " Remove ANSI escape sequences and control characters from script command
+        let line = substitute(line, '\e\[[0-9;]*[a-zA-Z]', '', 'g')
+        let line = substitute(line, '[\x00-\x1F]', '', 'g')
+        
+        if line == ''
+            continue
+        endif
+        
+        if g:cursor_agent_debug
+            call writefile(['PROCESSING LINE: ' . line[:50] . '...'], 'vim_stream_debug.log', 'a')
+        endif
+        
+        try
+            let json = json_decode(line)
+            
+            " Handle assistant messages (streaming chunks)
+            if has_key(json, 'type') && json.type == 'assistant' && has_key(json, 'message')
+                let content = json.message.content
+                if type(content) == v:t_list && len(content) > 0
+                    let text_obj = content[0]
+                    if has_key(text_obj, 'text')
+                        let s:stream_output .= text_obj.text
+                        
+                        " Update popup with current output
+                        if s:popup_winid != -1
+                            call popup_settext(s:popup_winid, split(s:stream_output, "\n"))
+                            redraw
+                        endif
+                    endif
+                endif
+            endif
+            
+            " Handle final result
+            if has_key(json, 'type') && json.type == 'result' && has_key(json, 'result')
+                let s:stream_output = json.result
+                
+                " Update popup with final output
+                if s:popup_winid != -1
+                    let final_lines = split(s:stream_output, "\n")
+                    call add(final_lines, '')
+                    call add(final_lines, '---')
+                    call add(final_lines, 'Press "q" to ask another question, "Esc" to close')
+                    call popup_settext(s:popup_winid, final_lines)
+                    call popup_setoptions(s:popup_winid, #{title: 'Cursor Agent - Complete'})
+                    redraw
+                endif
+            endif
+        catch
+            if g:cursor_agent_debug
+                call writefile(['JSON ERROR: ' . v:exception], 'vim_stream_debug.log', 'a')
+            endif
+        endtry
+    endfor
+endfunction
+
+" Callback for streaming errors
+function! s:on_stream_error(channel, msg)
+    if s:popup_winid != -1
+        call popup_close(s:popup_winid)
+        call cursor_agent#show_interactive_popup("Error: " . a:msg)
+    endif
+endfunction
+
+" Callback for stream close
+function! s:on_stream_close(job, status)
+    if g:cursor_agent_debug
+        call writefile(['EXIT CALLBACK: status=' . a:status], 'vim_stream_debug.log', 'a')
     endif
     let s:is_running = 0
+    " Popup already updated with final result, nothing more to do
 endfunction
 
 " Show loading popup with progress
@@ -410,39 +567,10 @@ function! s:on_close(channel)
     endif
 endfunction
 
-" Function to run cursor-agent in interactive mode
-function! cursor_agent#run_interactive(query = '')
-    if s:is_running
-        echo "Cursor Agent is already running..."
-        return
-    endif
-
-    let s:is_running = 1
-    
-    " Get current buffer content
-    let buffer_content = join(getline(1, '$'), "\n")
-    let file_path = expand('%:p')
-    let file_name = expand('%:t')
-    
-    " Check if cursor-agent is available
-    if !executable(g:cursor_agent_command)
-        echo "Error: cursor-agent not found. Please install it first."
-        let s:is_running = 0
-        return
-    endif
-    
-    " Prepare context for cursor-agent
-    let context = #{file_path: file_path, file_name: file_name, content: buffer_content, query: a:query}
-    
-    " Show interactive popup with loading message
-    call cursor_agent#show_interactive_popup("Loading...")
-    
-    " Run cursor-agent asynchronously
-    call s:run_cursor_agent_interactive(context)
-endfunction
 
 " Function to run cursor-agent with selected text
-function! cursor_agent#run_with_selection(query = '')
+function! cursor_agent#run_with_selection(...)
+    let query = a:0 > 0 ? a:1 : ''
     if s:is_running
         echo "Cursor Agent is already running..."
         return
@@ -471,7 +599,7 @@ function! cursor_agent#run_with_selection(query = '')
     endif
     
     " Prepare context for cursor-agent
-    let context = #{file_path: expand('%:p'), file_name: expand('%:t'), content: selected_text, query: a:query, selection: 1}
+    let context = #{file_path: expand('%:p'), file_name: expand('%:t'), content: selected_text, query: query, selection: 1}
     
     " Show popup with loading message
     call cursor_agent#show_popup("Analyzing selected text...")
@@ -486,11 +614,16 @@ function! cursor_agent#close()
         call popup_close(s:popup_winid)
         let s:popup_winid = -1
     endif
+    if s:terminal_winid != -1
+        call popup_close(s:terminal_winid)
+        let s:terminal_winid = -1
+        let s:terminal_bufnr = -1
+    endif
 endfunction
 
 " Function to show help
 function! cursor_agent#help()
-    let help_text = ["Cursor Agent VIM Plugin Help", "=============================", "", "Commands:", "  :CursorAgent [query]     - Run cursor-agent with current buffer", "  :CursorAgentInteractive [query] - Run in interactive mode", "  :CursorAgentSelection    - Run with selected text", "  :CursorAgentClose        - Close popup window", "  :CursorAgentHelp         - Show this help", "", "Key Mappings:", "  <leader>ca               - Run cursor-agent (normal mode)", "  <leader>ci               - Run interactive mode (normal mode)", "  <leader>cc               - Close popup", "  <leader>ca               - Run with selection (visual mode)", "  <leader>ci               - Run with selection (visual mode)", "  Ctrl-A Ctrl-A            - Run cursor-agent (insert mode)", "  Ctrl-A Ctrl-I            - Run interactive mode (insert mode)", "", "Popup Navigation:", "  q, Esc                   - Close popup", "  j, k                     - Scroll up/down", "  g, G                     - Go to top/bottom", "", "Interactive Mode:", "  q                        - Ask follow-up question", "  Esc                      - Close popup", "", "Configuration:", "  g:cursor_agent_command   - Path to cursor-agent", "  g:cursor_agent_popup_width  - Popup width", "  g:cursor_agent_popup_height - Popup height", "  g:cursor_agent_popup_border - Show popup border", ""]
+    let help_text = ["Cursor Agent VIM Plugin Help", "=============================", "", "Commands:", "  :CursorAgent [query]     - Run cursor-agent with current buffer", "  :CursorAgentInteractive [query] - Run in interactive mode", "  :CursorAgentSelection    - Run with selected text", "  :CursorAgentTerm         - Open terminal in popup window", "  :CursorAgentClose        - Close popup window", "  :CursorAgentHelp         - Show this help", "", "Key Mappings:", "  <leader>ca               - Run cursor-agent (normal mode)", "  <leader>ci               - Run interactive mode (normal mode)", "  <leader>cc               - Close popup", "  <leader>ca               - Run with selection (visual mode)", "  <leader>ci               - Run with selection (visual mode)", "  Ctrl-A Ctrl-A            - Run cursor-agent (insert mode)", "  Ctrl-A Ctrl-I            - Run interactive mode (insert mode)", "", "Popup Navigation:", "  q, Esc                   - Close popup", "  j, k                     - Scroll up/down", "  g, G                     - Go to top/bottom", "", "Interactive Mode:", "  q                        - Ask follow-up question", "  Esc                      - Close popup", "", "Terminal Popup:", "  All keys                 - Passed to terminal", "  X button                 - Close terminal popup", "", "Configuration:", "  g:cursor_agent_command   - Path to cursor-agent", "  g:cursor_agent_popup_width  - Popup width", "  g:cursor_agent_popup_height - Popup height", "  g:cursor_agent_popup_border - Show popup border", ""]
     
     call cursor_agent#show_popup(join(help_text, "\n"))
 endfunction
@@ -514,4 +647,106 @@ function! cursor_agent#info()
     let info_text = ["Cursor Agent VIM Plugin Info", "=============================", "", "Version: 1.0.0", "Author: dzmitry", "Status: " . (s:is_running ? "Running" : "Idle"), "Popup: " . (s:popup_winid != -1 ? "Open" : "Closed"), "", "Configuration:", "  Command: " . g:cursor_agent_command, "  Popup Size: " . g:cursor_agent_popup_width . "x" . g:cursor_agent_popup_height, "  Border: " . (g:cursor_agent_popup_border ? "Enabled" : "Disabled"), ""]
     
     call cursor_agent#show_popup(join(info_text, "\n"))
+endfunction
+
+" Function to open terminal in popup
+function! cursor_agent#terminal()
+    " Close existing terminal popup if open
+    if s:terminal_winid != -1
+        call popup_close(s:terminal_winid)
+        let s:terminal_winid = -1
+    endif
+    
+    " Check if terminal and popup features are available
+    if !has('terminal') || !has('popupwin')
+        echo "Error: Terminal or popup feature not available"
+        return
+    endif
+    
+    " Check if cursor-agent is available
+    if !executable(g:cursor_agent_command)
+        echo "Error: cursor-agent not found. Please install it first."
+        return
+    endif
+    
+    " Set Terminal highlight before creating terminal
+    hi link Terminal Search
+    
+    " Path to temporary file for chat ID (fixed location)
+    let chat_id_file = '/tmp/cursor_agent_chat_id_' . getpid()
+    
+    " Check if chat session already exists
+    let cmd = g:cursor_agent_command
+    if filereadable(chat_id_file)
+        " Restore existing chat session
+        let chat_id = readfile(chat_id_file)[0]
+        let cmd = g:cursor_agent_command . ' --resume ' . chat_id
+    else
+        " Create new chat and save ID
+        let create_cmd = g:cursor_agent_command . ' create-chat'
+        let chat_id = system(create_cmd)
+        let chat_id = substitute(chat_id, '\n', '', 'g')
+        call writefile([chat_id], chat_id_file)
+        let cmd = g:cursor_agent_command . ' --resume ' . chat_id
+    endif
+    
+    " Start cursor-agent with chat session
+    let opts = #{
+        \ hidden: 1,
+        \ term_finish: 'close',
+        \ curwin: 0
+        \ }
+    
+    let s:terminal_bufnr = term_start(cmd, opts)
+    
+    " Create popup window with terminal buffer
+    let popup_opts = #{
+        \ minwidth: 80,
+        \ minheight: 20,
+        \ maxwidth: 120,
+        \ maxheight: 30,
+        \ border: [],
+        \ title: ' Terminal (Cursor Agent) ',
+        \ close: 'button',
+        \ drag: 1,
+        \ resize: 1,
+        \ filter: function('s:terminal_filter')
+        \ }
+    
+    let s:terminal_winid = popup_create(s:terminal_bufnr, popup_opts)
+    
+    if s:terminal_winid == -1
+        echo "Error: Failed to create terminal popup"
+        " Clean up the terminal buffer
+        if bufexists(s:terminal_bufnr)
+            execute 'bdelete! ' . s:terminal_bufnr
+        endif
+        let s:terminal_bufnr = -1
+    endif
+endfunction
+
+" Filter function for terminal popup
+function! s:terminal_filter(winid, key)
+    " Don't handle any keys here - let them pass to the terminal
+    " The terminal will handle all input
+    return 0
+endfunction
+
+" Function to create new chat session
+function! cursor_agent#new_chat()
+    " Close existing terminal if open
+    if s:terminal_winid != -1
+        call popup_close(s:terminal_winid)
+        let s:terminal_winid = -1
+        let s:terminal_bufnr = -1
+    endif
+    
+    " Delete chat ID file to force new session
+    let chat_id_file = '/tmp/cursor_agent_chat_id_' . getpid()
+    if filereadable(chat_id_file)
+        call delete(chat_id_file)
+    endif
+    
+    " Open new terminal with new chat
+    call cursor_agent#terminal()
 endfunction
