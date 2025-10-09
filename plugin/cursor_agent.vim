@@ -15,8 +15,7 @@ let g:cursor_agent_popup_height = get(g:, 'cursor_agent_popup_height', 20)
 let g:cursor_agent_popup_border = get(g:, 'cursor_agent_popup_border', 1)
 
 " Commands
-command! -nargs=* CursorAgent call cursor_agent#run(<q-args>)
-command! -nargs=* CursorAgentInteractive call cursor_agent#run_interactive(<q-args>)
+command! -nargs=* CursorAgent call cursor_agent#run_interactive(<q-args>)
 command! -nargs=* CursorAgentSelection call cursor_agent#run_with_selection(<q-args>)
 command! CursorAgentClose call cursor_agent#close()
 command! CursorAgentHelp call cursor_agent#help()

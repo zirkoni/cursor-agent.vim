@@ -53,6 +53,22 @@ function! cursor_agent#run(query = '')
     call s:run_cursor_agent(context)
 endfunction
 
+" Interactive function to run cursor-agent
+function! cursor_agent#run_interactive(query = '')
+    " If no query provided, ask for one
+    if a:query == ''
+        let query = input('What would you like to ask about this file? ')
+        if query == ''
+            return
+        endif
+    else
+        let query = a:query
+    endif
+    
+    " Call the main run function
+    call cursor_agent#run(query)
+endfunction
+
 " Function to show popup window
 function! cursor_agent#show_popup(content)
     " Close existing popup if open
