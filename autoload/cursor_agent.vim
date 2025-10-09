@@ -80,10 +80,65 @@ function! cursor_agent#show_popup(content)
     endif
 endfunction
 
+" Function to show interactive popup with follow-up capability
+function! cursor_agent#show_interactive_popup(content)
+    " Close existing popup if open
+    if s:popup_winid != -1
+        call popup_close(s:popup_winid)
+    endif
+    
+    " Convert content to list if it's a string
+    let content_list = type(a:content) == v:t_string ? split(a:content, '\n') : a:content
+    
+    " Add interactive instructions
+    call add(content_list, '')
+    call add(content_list, '---')
+    call add(content_list, 'Press "q" to ask another question, "Esc" to close')
+    
+    " Check if popup is supported and all required functions exist
+    if has('popupwin') && exists('*popup_create') && exists('*popup_close') && exists('*popup_settext')
+        try
+        " Create popup window with interactive options
+        let s:popup_winid = popup_create(content_list, #{pos: 'center', title: 'Cursor Agent - Interactive', wrap: 1, moved: 'any', border: 1, filter: function('s:interactive_popup_filter')})
+        catch
+            " Fallback to echo if popup fails
+            echo join(content_list, "\n")
+            let s:popup_winid = -1
+        endtry
+    else
+        " Fallback to echo if popup is not supported
+        echo join(content_list, "\n")
+        let s:popup_winid = -1
+    endif
+endfunction
+
 " Popup filter function for key handling
 function! s:popup_filter(winid, key)
     if a:key ==# 'q' || a:key ==# "\<Esc>"
         call popup_close(a:winid)
+        let s:popup_winid = -1
+        return 1
+    endif
+    return 0
+endfunction
+
+" Interactive popup filter function
+function! s:interactive_popup_filter(winid, key)
+    if a:key ==# "\<Esc>"
+        " Close popup
+        call popup_close(a:winid)
+        let s:popup_winid = -1
+        return 1
+    elseif a:key ==# 'q'
+        " Ask another question
+        call popup_close(a:winid)
+        let s:popup_winid = -1
+        
+        " Get new query from user
+        let query = input('Enter your follow-up question: ')
+        if query != ''
+            call cursor_agent#run(query)
+        endif
         return 1
     endif
     return 0
@@ -106,9 +161,9 @@ function! s:run_cursor_agent(context)
     echo "Running cursor-agent..."
     let output = system(cmd)
     if v:shell_error == 0
-        call cursor_agent#show_popup(output)
+        call cursor_agent#show_interactive_popup(output)
     else
-        call cursor_agent#show_popup("Error running cursor-agent: " . output)
+        call cursor_agent#show_interactive_popup("Error running cursor-agent: " . output)
     endif
     let s:is_running = 0
     
