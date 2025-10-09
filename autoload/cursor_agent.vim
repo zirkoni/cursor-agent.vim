@@ -144,8 +144,162 @@ function! s:interactive_popup_filter(winid, key)
     return 0
 endfunction
 
+" Terminal popup filter function
+function! s:terminal_popup_filter(winid, key)
+    if a:key ==# "\<Esc>"
+        " Close terminal popup
+        call popup_close(a:winid)
+        let s:popup_winid = -1
+        return 1
+    elseif a:key ==# 'q'
+        " Close terminal and ask for next question
+        call popup_close(a:winid)
+        let s:popup_winid = -1
+        
+        " Get new query from user
+        let query = input('Enter your follow-up question: ')
+        if query != ''
+            call cursor_agent#run(query)
+        endif
+        return 1
+    endif
+    return 0
+endfunction
+
 " Function to run cursor-agent
 function! s:run_cursor_agent(context)
+    " Close existing popup if open
+    if s:popup_winid != -1
+        call popup_close(s:popup_winid)
+    endif
+    
+    " Prepare command with @-syntax for file context
+    let cmd = g:cursor_agent_command . ' --print "' . a:context.query . ' @' . a:context.file_path . '"'
+    
+    " Show loading popup with progress
+    call s:show_loading_popup()
+    
+    " Run command asynchronously with progress updates
+    let s:is_running = 1
+    let s:output_lines = []
+    let s:job = job_start(cmd, #{out_cb: function('s:on_output_progress'), err_cb: function('s:on_error_progress'), close_cb: function('s:on_close_progress')})
+endfunction
+
+" Show loading popup with progress
+function! s:show_loading_popup()
+    let loading_content = ['🤖 Cursor Agent is thinking...', '', '⏳ Processing your request...', '📝 Analyzing file context...', '🧠 Generating response...', '', 'Press Esc to cancel']
+    
+    if has('popupwin') && exists('*popup_create')
+        try
+            let s:popup_winid = popup_create(loading_content, #{pos: 'center', title: 'Cursor Agent - Processing', wrap: 1, moved: 'any', border: [], filter: function('s:loading_popup_filter')})
+        catch
+            echo join(loading_content, "\n")
+            let s:popup_winid = -1
+        endtry
+    else
+        echo join(loading_content, "\n")
+        let s:popup_winid = -1
+    endif
+endfunction
+
+" Loading popup filter
+function! s:loading_popup_filter(winid, key)
+    if a:key ==# "\<Esc>"
+        " Cancel the job if running
+        if s:is_running && exists('s:job')
+            call job_stop(s:job)
+        endif
+        call popup_close(a:winid)
+        let s:popup_winid = -1
+        let s:is_running = 0
+        return 1
+    endif
+    return 0
+endfunction
+
+" Progress output callback
+function! s:on_output_progress(channel, data)
+    call add(s:output_lines, a:data)
+    
+    " Update popup with current output
+    if s:popup_winid != -1
+        try
+            let current_content = popup_gettext(s:popup_winid)
+            let new_content = current_content . "\n" . a:data
+            call popup_settext(s:popup_winid, new_content)
+        catch
+            " Fallback to echo
+            echo a:data
+        endtry
+    else
+        echo a:data
+    endif
+endfunction
+
+" Progress error callback
+function! s:on_error_progress(channel, data)
+    call add(s:output_lines, "Error: " . a:data)
+    
+    if s:popup_winid != -1
+        try
+            let current_content = popup_gettext(s:popup_winid)
+            let new_content = current_content . "\nError: " . a:data
+            call popup_settext(s:popup_winid, new_content)
+        catch
+            echo "Error: " . a:data
+        endtry
+    else
+        echo "Error: " . a:data
+    endif
+endfunction
+
+" Progress close callback
+function! s:on_close_progress(channel)
+    let s:is_running = 0
+    
+    " Show final result in interactive popup
+    if s:popup_winid != -1
+        call popup_close(s:popup_winid)
+    endif
+    
+    let final_output = join(s:output_lines, "\n")
+    if final_output != ''
+        call cursor_agent#show_interactive_popup(final_output)
+    else
+        call cursor_agent#show_interactive_popup("No output received from cursor-agent")
+    endif
+    
+    let s:popup_winid = -1
+endfunction
+
+" Fallback function for systems without popup_terminal
+function! s:run_cursor_agent_fallback(context)
+    " Create temporary file with context
+    let temp_file = tempname() . '_cursor_context.txt'
+    let context_text = "File: " . a:context.file_path . "\n"
+    let context_text .= "Query: " . a:context.query . "\n"
+    let context_text .= "Content:\n" . a:context.content
+    
+    call writefile(split(context_text, "\n"), temp_file)
+    
+    " Prepare command with @-syntax for file context
+    let cmd = g:cursor_agent_command . ' --print "' . a:context.query . ' @' . a:context.file_path . '"'
+    
+    " Run command synchronously
+    echo "Running cursor-agent..."
+    let output = system(cmd)
+    if v:shell_error == 0
+        call cursor_agent#show_interactive_popup(output)
+    else
+        call cursor_agent#show_interactive_popup("Error running cursor-agent: " . output)
+    endif
+    
+    " Clean up temp file
+    call delete(temp_file)
+endfunction
+
+" Function to run cursor-agent in interactive mode
+function! s:run_cursor_agent_interactive(context)
     " Create temporary file with context
     let temp_file = tempname() . '_cursor_context.txt'
     let context_text = "File: " . a:context.file_path . "\n"
@@ -227,9 +381,35 @@ function! s:on_close(channel)
     endif
 endfunction
 
-" Function to ask a specific question
-function! cursor_agent#ask(question)
-    call cursor_agent#run(a:question)
+" Function to run cursor-agent in interactive mode
+function! cursor_agent#run_interactive(query = '')
+    if s:is_running
+        echo "Cursor Agent is already running..."
+        return
+    endif
+
+    let s:is_running = 1
+    
+    " Get current buffer content
+    let buffer_content = join(getline(1, '$'), "\n")
+    let file_path = expand('%:p')
+    let file_name = expand('%:t')
+    
+    " Check if cursor-agent is available
+    if !executable(g:cursor_agent_command)
+        echo "Error: cursor-agent not found. Please install it first."
+        let s:is_running = 0
+        return
+    endif
+    
+    " Prepare context for cursor-agent
+    let context = #{file_path: file_path, file_name: file_name, content: buffer_content, query: a:query}
+    
+    " Show interactive popup with loading message
+    call cursor_agent#show_interactive_popup("Loading...")
+    
+    " Run cursor-agent asynchronously
+    call s:run_cursor_agent_interactive(context)
 endfunction
 
 " Function to run cursor-agent with selected text
@@ -281,7 +461,7 @@ endfunction
 
 " Function to show help
 function! cursor_agent#help()
-    let help_text = ["Cursor Agent VIM Plugin Help", "=============================", "", "Commands:", "  :CursorAgent [query]     - Run cursor-agent with current buffer", "  :CursorAgentAsk <query>  - Ask a specific question", "  :CursorAgentSelection    - Run with selected text", "  :CursorAgentClose        - Close popup window", "  :CursorAgentHelp         - Show this help", "", "Key Mappings:", "  <leader>ca               - Run cursor-agent (normal mode)", "  <leader>cq               - Ask question (normal mode)", "  <leader>cc               - Close popup", "  <leader>ca               - Run with selection (visual mode)", "  <leader>cq               - Ask with selection (visual mode)", "  Ctrl-A Ctrl-A            - Run cursor-agent (insert mode)", "  Ctrl-A Ctrl-Q            - Ask question (insert mode)", "", "Popup Navigation:", "  q, Esc                   - Close popup", "  j, k                     - Scroll up/down", "  g, G                     - Go to top/bottom", "", "Configuration:", "  g:cursor_agent_command   - Path to cursor-agent", "  g:cursor_agent_popup_width  - Popup width", "  g:cursor_agent_popup_height - Popup height", "  g:cursor_agent_popup_border - Show popup border", ""]
+    let help_text = ["Cursor Agent VIM Plugin Help", "=============================", "", "Commands:", "  :CursorAgent [query]     - Run cursor-agent with current buffer", "  :CursorAgentInteractive [query] - Run in interactive mode", "  :CursorAgentSelection    - Run with selected text", "  :CursorAgentClose        - Close popup window", "  :CursorAgentHelp         - Show this help", "", "Key Mappings:", "  <leader>ca               - Run cursor-agent (normal mode)", "  <leader>ci               - Run interactive mode (normal mode)", "  <leader>cc               - Close popup", "  <leader>ca               - Run with selection (visual mode)", "  <leader>ci               - Run with selection (visual mode)", "  Ctrl-A Ctrl-A            - Run cursor-agent (insert mode)", "  Ctrl-A Ctrl-I            - Run interactive mode (insert mode)", "", "Popup Navigation:", "  q, Esc                   - Close popup", "  j, k                     - Scroll up/down", "  g, G                     - Go to top/bottom", "", "Interactive Mode:", "  q                        - Ask follow-up question", "  Esc                      - Close popup", "", "Configuration:", "  g:cursor_agent_command   - Path to cursor-agent", "  g:cursor_agent_popup_width  - Popup width", "  g:cursor_agent_popup_height - Popup height", "  g:cursor_agent_popup_border - Show popup border", ""]
     
     call cursor_agent#show_popup(join(help_text, "\n"))
 endfunction
