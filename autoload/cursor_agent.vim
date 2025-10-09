@@ -195,10 +195,23 @@ function! s:run_cursor_agent(context)
     " Show loading popup with progress
     call s:show_loading_popup()
     
-    " Run command asynchronously with progress updates
-    let s:is_running = 1
-    let s:output_lines = []
-    let s:job = job_start(cmd, #{out_cb: function('s:on_output_progress'), err_cb: function('s:on_error_progress'), close_cb: function('s:on_close_progress')})
+    " Run command synchronously for now (async doesn't work in non-interactive mode)
+    echo "Running cursor-agent..."
+    let output = system(cmd)
+    if v:shell_error == 0
+        " Close loading popup and show result
+        if s:popup_winid != -1
+            call popup_close(s:popup_winid)
+        endif
+        call cursor_agent#show_interactive_popup(output)
+    else
+        " Close loading popup and show error
+        if s:popup_winid != -1
+            call popup_close(s:popup_winid)
+        endif
+        call cursor_agent#show_interactive_popup("Error running cursor-agent: " . output)
+    endif
+    let s:is_running = 0
 endfunction
 
 " Show loading popup with progress
