@@ -67,7 +67,7 @@ function! cursor_agent#show_popup(content)
     if has('popupwin') && exists('*popup_create') && exists('*popup_close') && exists('*popup_settext')
         try
         " Create popup window with working options
-        let s:popup_winid = popup_create(content_list, #{pos: 'center', title: 'Cursor Agent', wrap: 1, moved: 'any', border: 1, filter: function('s:popup_filter')})
+        let s:popup_winid = popup_create(content_list, #{pos: 'center', title: 'Cursor Agent', wrap: 1, moved: 'any', border: [], filter: function('s:popup_filter')})
         catch
             " Fallback to echo if popup fails
             echo join(content_list, "\n")
@@ -99,7 +99,7 @@ function! cursor_agent#show_interactive_popup(content)
     if has('popupwin') && exists('*popup_create') && exists('*popup_close') && exists('*popup_settext')
         try
         " Create popup window with interactive options
-        let s:popup_winid = popup_create(content_list, #{pos: 'center', title: 'Cursor Agent - Interactive', wrap: 1, moved: 'any', border: 1, filter: function('s:interactive_popup_filter')})
+        let s:popup_winid = popup_create(content_list, #{pos: 'center', title: 'Cursor Agent - Interactive', wrap: 1, moved: 'any', border: [], filter: function('s:interactive_popup_filter')})
         catch
             " Fallback to echo if popup fails
             echo join(content_list, "\n")
