@@ -63,11 +63,11 @@ function! cursor_agent#show_popup(content)
     " Convert content to list if it's a string
     let content_list = type(a:content) == v:t_string ? split(a:content, '\n') : a:content
     
-    " Check if popup is supported
-    if has('popupwin')
+    " Check if popup is supported and all required functions exist
+    if has('popupwin') && exists('*popup_create') && exists('*popup_close') && exists('*popup_settext')
         try
-            " Create popup window with simplified options
-            let s:popup_winid = popup_create(content_list, #{pos: 'center', line: 'cursor+1', col: 'cursor', minwidth: g:cursor_agent_popup_width, minheight: g:cursor_agent_popup_height, maxwidth: g:cursor_agent_popup_width, maxheight: g:cursor_agent_popup_height, border: g:cursor_agent_popup_border, title: 'Cursor Agent', wrap: 1, moved: 'any', filter: function('s:popup_filter')})
+            " Create popup window with working options
+            let s:popup_winid = popup_create(content_list, #{pos: 'center', title: 'Cursor Agent', wrap: 1, moved: 'any', filter: function('s:popup_filter')})
         catch
             " Fallback to echo if popup fails
             echo join(content_list, "\n")
@@ -120,9 +120,15 @@ endfunction
 function! s:on_output(channel, data)
     if s:popup_winid != -1
         try
-            let current_content = popup_gettext(s:popup_winid)
-            let new_content = current_content . a:data
-            call popup_settext(s:popup_winid, new_content)
+            " Check if popup_gettext exists before using it
+            if exists('*popup_gettext')
+                let current_content = popup_gettext(s:popup_winid)
+                let new_content = current_content . a:data
+                call popup_settext(s:popup_winid, new_content)
+            else
+                " Just append to popup without getting current content
+                call popup_settext(s:popup_winid, a:data)
+            endif
         catch
             " Fallback to echo if popup operations fail
             echo a:data
@@ -137,9 +143,15 @@ endfunction
 function! s:on_error(channel, data)
     if s:popup_winid != -1
         try
-            let current_content = popup_gettext(s:popup_winid)
-            let new_content = current_content . "\nError: " . a:data
-            call popup_settext(s:popup_winid, new_content)
+            " Check if popup_gettext exists before using it
+            if exists('*popup_gettext')
+                let current_content = popup_gettext(s:popup_winid)
+                let new_content = current_content . "\nError: " . a:data
+                call popup_settext(s:popup_winid, new_content)
+            else
+                " Just show error in popup
+                call popup_settext(s:popup_winid, "Error: " . a:data)
+            endif
         catch
             " Fallback to echo if popup operations fail
             echo "Error: " . a:data
