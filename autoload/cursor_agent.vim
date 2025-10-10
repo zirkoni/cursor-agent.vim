@@ -31,6 +31,10 @@ let s:stream_output = ''
 let s:job = v:null
 let s:read_timer = -1
 let s:raw_buffer = ''
+let s:chat_output_winid = -1
+let s:chat_input_winid = -1
+let s:chat_input_text = []
+let s:chat_cursor_pos = 0
 
 " Main function to run cursor-agent with current buffer context
 function! cursor_agent#run(...)
@@ -619,11 +623,13 @@ function! cursor_agent#close()
         let s:terminal_winid = -1
         let s:terminal_bufnr = -1
     endif
+    " Also close chat windows
+    call cursor_agent#close_chat()
 endfunction
 
 " Function to show help
 function! cursor_agent#help()
-    let help_text = ["Cursor Agent VIM Plugin Help", "=============================", "", "Commands:", "  :CursorAgent [query]     - Run cursor-agent with current buffer", "  :CursorAgentInteractive [query] - Run in interactive mode", "  :CursorAgentSelection    - Run with selected text", "  :CursorAgentTerm         - Open terminal in popup window", "  :CursorAgentClose        - Close popup window", "  :CursorAgentHelp         - Show this help", "", "Key Mappings:", "  <leader>ca               - Run cursor-agent (normal mode)", "  <leader>ci               - Run interactive mode (normal mode)", "  <leader>cc               - Close popup", "  <leader>ca               - Run with selection (visual mode)", "  <leader>ci               - Run with selection (visual mode)", "  Ctrl-A Ctrl-A            - Run cursor-agent (insert mode)", "  Ctrl-A Ctrl-I            - Run interactive mode (insert mode)", "", "Popup Navigation:", "  q, Esc                   - Close popup", "  j, k                     - Scroll up/down", "  g, G                     - Go to top/bottom", "", "Interactive Mode:", "  q                        - Ask follow-up question", "  Esc                      - Close popup", "", "Terminal Popup:", "  All keys                 - Passed to terminal", "  X button                 - Close terminal popup", "", "Configuration:", "  g:cursor_agent_command   - Path to cursor-agent", "  g:cursor_agent_popup_width  - Popup width", "  g:cursor_agent_popup_height - Popup height", "  g:cursor_agent_popup_border - Show popup border", ""]
+    let help_text = ["Cursor Agent VIM Plugin Help", "=============================", "", "Commands:", "  :CursorAgent [query]     - Run cursor-agent with streaming", "  :CursorAgentChat         - Open interactive chat (2-panel UI)", "  :CursorAgentSelection    - Run with selected text", "  :CursorAgentTerm         - Open terminal in popup window", "  :CursorAgentNewChat      - Start new chat session", "  :CursorAgentClose        - Close all popup windows", "  :CursorAgentHelp         - Show this help", "", "Key Mappings:", "  <leader>ca               - Run cursor-agent (normal mode)", "  <leader>ci               - Run interactive mode (normal mode)", "  <leader>cc               - Close popup", "  <leader>ca               - Run with selection (visual mode)", "  <leader>ci               - Run with selection (visual mode)", "  Ctrl-A Ctrl-A            - Run cursor-agent (insert mode)", "  Ctrl-A Ctrl-I            - Run interactive mode (insert mode)", "", "Chat Mode:", "  Enter                    - Send message", "  Esc                      - Close chat", "  Arrow keys               - Move cursor in input", "  Home/End, Ctrl-A/E       - Jump to start/end", "", "Popup Navigation:", "  q, Esc                   - Close popup", "  j, k                     - Scroll up/down", "  g, G                     - Go to top/bottom", "", "Configuration:", "  g:cursor_agent_command   - Path to cursor-agent", "  g:cursor_agent_debug     - Enable debug logging (0/1)", ""]
     
     call cursor_agent#show_popup(join(help_text, "\n"))
 endfunction
@@ -647,6 +653,331 @@ function! cursor_agent#info()
     let info_text = ["Cursor Agent VIM Plugin Info", "=============================", "", "Version: 1.0.0", "Author: dzmitry", "Status: " . (s:is_running ? "Running" : "Idle"), "Popup: " . (s:popup_winid != -1 ? "Open" : "Closed"), "", "Configuration:", "  Command: " . g:cursor_agent_command, "  Popup Size: " . g:cursor_agent_popup_width . "x" . g:cursor_agent_popup_height, "  Border: " . (g:cursor_agent_popup_border ? "Enabled" : "Disabled"), ""]
     
     call cursor_agent#show_popup(join(info_text, "\n"))
+endfunction
+
+" Interactive chat with two-section popup
+function! cursor_agent#chat()
+    " Check if chat is already open
+    if s:chat_output_winid != -1
+        echom 'Chat is already open'
+        return
+    endif
+    
+    " Calculate sizes and positions
+    let width = float2nr(&columns * 0.8)
+    let height = float2nr(&lines * 0.8)
+    let xoffset = float2nr((&columns - width) / 2)
+    let yoffset = float2nr((&lines - height) / 2)
+    
+    " Output section (top, bigger)
+    let output_height = height - 5
+    
+    " Input section (bottom, 3 lines)
+    let input_height = 3
+    let input_yoffset = yoffset + output_height + 2
+    
+    " Create output popup
+    let s:chat_output_winid = popup_create([], #{
+        \ line: yoffset,
+        \ col: xoffset,
+        \ minwidth: width,
+        \ maxwidth: width,
+        \ minheight: output_height,
+        \ maxheight: output_height,
+        \ border: [],
+        \ title: ' Cursor Agent Chat ',
+        \ wrap: 1,
+        \ scrollbar: 1,
+        \ mapping: 0
+        \ })
+    
+    " Create input popup with filter
+    let s:chat_input_winid = popup_create(['> '], #{
+        \ line: input_yoffset,
+        \ col: xoffset,
+        \ minwidth: width,
+        \ maxwidth: width,
+        \ minheight: input_height,
+        \ maxheight: input_height,
+        \ border: [],
+        \ title: ' Input (Enter to send, Esc to close) ',
+        \ wrap: 0,
+        \ filter: function('s:chat_input_filter'),
+        \ mapping: 0
+        \ })
+    
+    " Initialize input state
+    let s:chat_input_text = []
+    let s:chat_cursor_pos = 0
+    
+    " Set cursor highlight
+    call matchaddpos('Cursor', [[1, 3]], 10, -1, #{window: s:chat_input_winid})
+    
+    redraw
+endfunction
+
+" Filter for chat input popup
+function! s:chat_input_filter(winid, key)
+    let ascii_val = char2nr(a:key)
+    
+    " Printable characters
+    if (len(a:key) == 1 && ascii_val >= 32 && ascii_val <= 126)
+        if s:chat_cursor_pos == len(s:chat_input_text)
+            call add(s:chat_input_text, a:key)
+        else
+            let pre = s:chat_cursor_pos > 0 ? s:chat_input_text[: s:chat_cursor_pos - 1] : []
+            let s:chat_input_text = pre + [a:key] + s:chat_input_text[s:chat_cursor_pos :]
+        endif
+        let s:chat_cursor_pos += 1
+        call s:update_chat_input()
+        return 1
+    endif
+    
+    " Backspace
+    if a:key ==# "\<BS>" || a:key ==# "\<C-h>"
+        if s:chat_cursor_pos > 0
+            if s:chat_cursor_pos == len(s:chat_input_text)
+                let s:chat_input_text = s:chat_input_text[:-2]
+            else
+                let before = s:chat_cursor_pos > 1 ? s:chat_input_text[: s:chat_cursor_pos - 2] : []
+                let s:chat_input_text = before + s:chat_input_text[s:chat_cursor_pos :]
+            endif
+            let s:chat_cursor_pos -= 1
+            call s:update_chat_input()
+        endif
+        return 1
+    endif
+    
+    " Cursor movement
+    if a:key ==# "\<Left>"
+        let s:chat_cursor_pos = max([0, s:chat_cursor_pos - 1])
+        call s:update_chat_input()
+        return 1
+    endif
+    
+    if a:key ==# "\<Right>"
+        let s:chat_cursor_pos = min([len(s:chat_input_text), s:chat_cursor_pos + 1])
+        call s:update_chat_input()
+        return 1
+    endif
+    
+    " Home/End
+    if a:key ==# "\<Home>" || a:key ==# "\<C-a>"
+        let s:chat_cursor_pos = 0
+        call s:update_chat_input()
+        return 1
+    endif
+    
+    if a:key ==# "\<End>" || a:key ==# "\<C-e>"
+        let s:chat_cursor_pos = len(s:chat_input_text)
+        call s:update_chat_input()
+        return 1
+    endif
+    
+    " Enter - send message
+    if a:key ==# "\<CR>"
+        let query = join(s:chat_input_text, '')
+        if query != ''
+            call s:send_chat_message(query)
+            let s:chat_input_text = []
+            let s:chat_cursor_pos = 0
+            call s:update_chat_input()
+        endif
+        return 1
+    endif
+    
+    " Escape - close chat
+    if a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
+        call cursor_agent#close_chat()
+        return 1
+    endif
+    
+    return 0
+endfunction
+
+" Update chat input display with cursor
+function! s:update_chat_input()
+    let text = '> ' . join(s:chat_input_text, '')
+    call popup_settext(s:chat_input_winid, text)
+    
+    " Clear and re-add cursor highlight
+    call clearmatches(s:chat_input_winid)
+    let cursor_col = 3 + s:chat_cursor_pos
+    call matchaddpos('Cursor', [[1, cursor_col]], 10, -1, #{window: s:chat_input_winid})
+    redraw
+endfunction
+
+" Send chat message
+function! s:send_chat_message(query)
+    " Add user message to output
+    let user_msg = ['', 'You: ' . a:query, '']
+    let current_text = getbufline(winbufnr(s:chat_output_winid), 1, '$')
+    call popup_settext(s:chat_output_winid, current_text + user_msg + ['AI: ...'])
+    
+    " Prepare context for cursor-agent
+    let context = #{
+        \ file_path: expand('%:p'),
+        \ file_name: expand('%:t'),
+        \ content: '',
+        \ query: a:query
+        \ }
+    
+    " Run cursor-agent with streaming (reuse existing function)
+    call s:run_cursor_agent_for_chat(context)
+endfunction
+
+" Modified run_cursor_agent for chat mode
+function! s:run_cursor_agent_for_chat(context)
+    if s:is_running
+        return
+    endif
+    
+    let s:is_running = 1
+    
+    " Get or create chat session
+    let chat_id_file = '/tmp/cursor_agent_chat_id_' . getpid()
+    let chat_id = ''
+    
+    if filereadable(chat_id_file)
+        let chat_id = readfile(chat_id_file)[0]
+    else
+        let create_cmd = g:cursor_agent_command . ' create-chat'
+        let chat_id = system(create_cmd)
+        let chat_id = substitute(chat_id, '\n', '', 'g')
+        call writefile([chat_id], chat_id_file)
+    endif
+    
+    " Prepare streaming command
+    let cmd = 'script -q /dev/null ' . g:cursor_agent_command . ' --resume ' . chat_id . ' -p --output-format stream-json --stream-partial-output "' . a:context.query . '"'
+    
+    " Initialize streaming output for chat
+    let s:stream_output = ''
+    
+    if g:cursor_agent_debug
+        call writefile(['CHAT: STARTING JOB: ' . cmd], 'vim_stream_debug.log', 'a')
+    endif
+    
+    " Run command asynchronously
+    let s:job = job_start(['/bin/sh', '-c', cmd], #{
+        \ out_cb: function('s:on_chat_stream_output'),
+        \ err_cb: function('s:on_stream_error'),
+        \ exit_cb: function('s:on_chat_stream_close'),
+        \ out_mode: 'raw',
+        \ err_mode: 'raw'
+        \ })
+    
+    if job_status(s:job) == 'fail'
+        if g:cursor_agent_debug
+            call writefile(['CHAT: JOB FAILED TO START'], 'vim_stream_debug.log', 'a')
+        endif
+        let s:is_running = 0
+    endif
+endfunction
+
+" Callback for chat streaming output
+function! s:on_chat_stream_output(channel, msg)
+    if g:cursor_agent_debug
+        call writefile(['CHAT: CALLBACK len=' . len(a:msg)], 'vim_stream_debug.log', 'a')
+    endif
+    
+    " Accumulate raw data
+    let s:raw_buffer .= a:msg
+    
+    " Split by newlines
+    let lines = split(s:raw_buffer, "\n", 1)
+    
+    if len(lines) > 0 && lines[-1] != ''
+        let s:raw_buffer = lines[-1]
+        let lines = lines[:-2]
+    else
+        let s:raw_buffer = ''
+    endif
+    
+    " Process each complete line
+    for line in lines
+        if line == ''
+            continue
+        endif
+        
+        " Remove ANSI escape sequences
+        let line = substitute(line, '\e\[[0-9;]*[a-zA-Z]', '', 'g')
+        let line = substitute(line, '[\x00-\x1F]', '', 'g')
+        
+        if line == ''
+            continue
+        endif
+        
+        try
+            let json = json_decode(line)
+            
+            " Handle assistant messages (streaming chunks)
+            if has_key(json, 'type') && json.type == 'assistant' && has_key(json, 'message')
+                let content = json.message.content
+                if type(content) == v:t_list && len(content) > 0
+                    let text_obj = content[0]
+                    if has_key(text_obj, 'text')
+                        let s:stream_output .= text_obj.text
+                        
+                        " Update chat output window
+                        if s:chat_output_winid != -1
+                            let current_text = getbufline(winbufnr(s:chat_output_winid), 1, '$')
+                            " Replace last line (AI: ...) with actual content
+                            if len(current_text) > 0
+                                let current_text = current_text[:-2]
+                            endif
+                            call popup_settext(s:chat_output_winid, current_text + ['AI: ' . s:stream_output])
+                            " Scroll to bottom
+                            call win_execute(s:chat_output_winid, 'normal! G')
+                            redraw
+                        endif
+                    endif
+                endif
+            endif
+            
+            " Handle final result
+            if has_key(json, 'type') && json.type == 'result' && has_key(json, 'result')
+                let s:stream_output = json.result
+                
+                " Final update
+                if s:chat_output_winid != -1
+                    let current_text = getbufline(winbufnr(s:chat_output_winid), 1, '$')
+                    if len(current_text) > 0
+                        let current_text = current_text[:-2]
+                    endif
+                    call popup_settext(s:chat_output_winid, current_text + ['AI: ' . s:stream_output, ''])
+                    call win_execute(s:chat_output_winid, 'normal! G')
+                    redraw
+                endif
+            endif
+        catch
+            if g:cursor_agent_debug
+                call writefile(['CHAT: JSON ERROR: ' . v:exception], 'vim_stream_debug.log', 'a')
+            endif
+        endtry
+    endfor
+endfunction
+
+" Callback for chat stream close
+function! s:on_chat_stream_close(job, status)
+    if g:cursor_agent_debug
+        call writefile(['CHAT: EXIT status=' . a:status], 'vim_stream_debug.log', 'a')
+    endif
+    let s:is_running = 0
+    let s:stream_output = ''
+endfunction
+
+" Close chat windows
+function! cursor_agent#close_chat()
+    if s:chat_output_winid != -1
+        call popup_close(s:chat_output_winid)
+        let s:chat_output_winid = -1
+    endif
+    if s:chat_input_winid != -1
+        call popup_close(s:chat_input_winid)
+        let s:chat_input_winid = -1
+    endif
+    let s:chat_input_text = []
+    let s:chat_cursor_pos = 0
 endfunction
 
 " Function to open terminal in popup

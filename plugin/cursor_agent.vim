@@ -24,6 +24,7 @@ command! CursorAgentStatus call cursor_agent#status()
 command! CursorAgentInfo call cursor_agent#info()
 command! CursorAgentTerm call cursor_agent#terminal()
 command! CursorAgentNewChat call cursor_agent#new_chat()
+command! CursorAgentChat call cursor_agent#chat()
 
 " Key mappings
 if !hasmapto('<Plug>CursorAgentRun')

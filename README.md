@@ -75,11 +75,11 @@ make clean       # Clean temporary files
 ### Commands
 
 - `:CursorAgent [query]` - Run cursor-agent with current buffer as context (streaming)
-- `:CursorAgentAsk <question>` - Ask a specific question to cursor-agent
+- `:CursorAgentChat` - Open interactive chat with 2-panel UI (output + input field)
 - `:CursorAgentSelection` - Run with selected text
 - `:CursorAgentTerm` - Open terminal in popup window (shares same chat session)
 - `:CursorAgentNewChat` - Start a new chat session
-- `:CursorAgentClose` - Close popup window
+- `:CursorAgentClose` - Close all popup windows
 - `:CursorAgentHelp` - Show help
 - `:CursorAgentStatus` - Check cursor-agent status
 - `:CursorAgentInfo` - Show plugin information
