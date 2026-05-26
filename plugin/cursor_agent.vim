@@ -26,26 +26,26 @@ command! CursorAgentTerm call cursor_agent#terminal()
 command! CursorAgentNewChat call cursor_agent#new_chat()
 command! CursorAgentChat call cursor_agent#chat()
 
-" Key mappings
-if !hasmapto('<Plug>CursorAgentRun')
-    nmap <silent> <leader>ca <Plug>CursorAgentRun
-endif
-if !hasmapto('<Plug>CursorAgentInteractive')
-    nmap <silent> <leader>ci <Plug>CursorAgentInteractive
-endif
-if !hasmapto('<Plug>CursorAgentClose')
-    nmap <silent> <leader>cc <Plug>CursorAgentClose
-endif
-
-" Define the actual mappings
-nnoremap <silent> <Plug>CursorAgentRun :CursorAgent<CR>
-nnoremap <silent> <Plug>CursorAgentInteractive :CursorAgentInteractive<CR>
-nnoremap <silent> <Plug>CursorAgentClose :CursorAgentClose<CR>
-
-" Visual mode mappings
-vnoremap <silent> <leader>ca :<C-U>CursorAgentSelection<CR>
-vnoremap <silent> <leader>ci :<C-U>CursorAgentSelection<CR>
-
-" Insert mode mappings
-inoremap <silent> <C-A><C-A> <Esc>:CursorAgent<CR>
-inoremap <silent> <C-A><C-I> <Esc>:CursorAgentInteractive<CR>
+"" Key mappings
+"if !hasmapto('<Plug>CursorAgentRun')
+"    nmap <silent> <leader>ca <Plug>CursorAgentRun
+"endif
+"if !hasmapto('<Plug>CursorAgentInteractive')
+"    nmap <silent> <leader>ci <Plug>CursorAgentInteractive
+"endif
+"if !hasmapto('<Plug>CursorAgentClose')
+"    nmap <silent> <leader>cc <Plug>CursorAgentClose
+"endif
+"
+"" Define the actual mappings
+"nnoremap <silent> <Plug>CursorAgentRun :CursorAgent<CR>
+"nnoremap <silent> <Plug>CursorAgentInteractive :CursorAgentInteractive<CR>
+"nnoremap <silent> <Plug>CursorAgentClose :CursorAgentClose<CR>
+"
+"" Visual mode mappings
+"vnoremap <silent> <leader>ca :<C-U>CursorAgentSelection<CR>
+"vnoremap <silent> <leader>ci :<C-U>CursorAgentSelection<CR>
+"
+"" Insert mode mappings
+"inoremap <silent> <C-A><C-A> <Esc>:CursorAgent<CR>
+"inoremap <silent> <C-A><C-I> <Esc>:CursorAgentInteractive<CR>
